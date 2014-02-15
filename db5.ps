@@ -1,0 +1,479 @@
+%!
+%db5.ps
+/comment{{currentfile token pop/end-comment eq{exit}if}loop}def
+comment
+
+Re-write 5 of postscript source-level debugger.
+Accepts executable file, string, or procedure as argument.
+'traceon' presents a concise 1-line summary of the current
+object and the stack picture
+
+This file defines the following names 
+
+          comment ... end-comment    comment block notation
+    proc|file|string  debug  -       invoke the debugger
+                   -  resume -       resume a session after 'db-error exit' or 'step: q'
+                   -  traceon  -     enable tracing
+                   -  traceoff  -    disable tracing
+                   -  stepon  -      enable single-stepping
+                   -  stepoff  -     disable single-stepping
+                   -  steponnext  -  enable single-stepping on the next object
+                   -  dumpstack  -   print the contents of the debugging stack
+                   -  skip  -        skip the current object
+
+These names may be used to select option before invoking debug,
+or to change options at the db-error prompt, which is a "for-real-reals" ps prompt
+with errors suppressed.  After executing your command line, db-error will try to
+re-execute the failed operation, unless you 'skip'.
+
+The step: prompt accepts single-letter commands:
+
+          c continue   disable single-stepping
+          n next       execute the next object (or loop) atomically
+          b bypass     skip next object
+          s step       step into next object (or loop)
+          q quit       exit the debugger (may be 'resume'ed)
+
+To invoke from an external program:
+
+    %!
+    %my buggy code
+    (db5.ps)run traceon currentfile cvx debug
+    blah blah blah undefined undefined
+
+end-comment
+
+% prepare internal dict known as //dbdict
+% this dict is //immediately-loaded into the procedures
+% so it does not need to be on the dict stack
+<<
+/nextobject null
+/stack 500 array   % internal stack array
+/ptr -1            % stack cursor
+/trace false       % are we producing a trace?
+/step false        % are we pausing at each command?
+/delaystep false
+/enddefbegin { currentdict 3 1 roll end def begin } % define an external function
+>> begin /dbdict currentdict def
+
+% push and pop the dbdict<stack>
+/pushs { % proc|file|string|name  pushs
+    //dbdict /ptr 2 copy get 1 add put
+    //dbdict /stack get //dbdict /ptr get 3 -1 roll put  % dbdict<stack>[++dbdict<ptr>] = _
+} def
+/pops { % -  pops  -
+    //dbdict /ptr get 0 ge {
+        //dbdict /stack get //dbdict /ptr get get  % dbdict<stack>[dbdict<ptr>]
+        dup type /filetype eq {closefile}{pop} ifelse
+        //dbdict /ptr 2 copy get 1 sub put  % --dbdict<ptr>
+    } if
+} def
+
+% executable source type handlers
+% these all attempt to present the same interface as `file token`
+% nametype is not really a source, but is allowed on the stack to handle loop continuations
+/nametype {
+    //pops exec  % remove name from source stack
+    true
+} def
+/filetype {
+    token
+} def
+/stringtype {
+    token {
+        exch 
+        //dbdict /stack get //dbdict /ptr get 3 -1 roll put  %update source
+        true
+    }{
+        false
+    } ifelse
+} def
+/arraytype {
+    dup length 0 gt {
+        dup 0 get exch
+        dup length 1 gt {
+            //dbdict /stack get //dbdict /ptr get 3 -1 roll  %update source
+            1 1 index length 1 sub getinterval put
+        }{
+            pop
+            //pops exec
+        } ifelse
+        true
+    }{ % length not >0, ie. ==0
+        //pops exec  % remove array from source stack
+        false
+    } ifelse
+} def
+
+% fetch next object from top of source stack
+% using typename procedures
+/getnextobject {
+    //dbdict /nextobject get
+    dup null eq {
+        pop
+        //dbdict /ptr get 0 ge {
+            //dbdict /stack get //dbdict /ptr get get
+            //dbdict 1 index type get exec
+        }{
+            false
+        } ifelse
+    }{ true } ifelse
+    //dbdict /delaystep get {
+        //dbdict /delaystep false put
+        stepon
+    } if
+} def
+
+% addoper defines an override for the actual operator object, for bound procs
+/addoper { 1 index dup load type /operatortype eq { 1 index }{pop} ifelse } def
+
+% list of operators that exit searches for
+/loopingops <<
+    /loop 1
+    /repeat 1
+    /for 1
+    /forall 1
+    /dict-forall 1
+>> def
+
+% operator overrides
+% these all use dbdict<stack> like an exec stack
+/operators <<
+    %for exec, just push onto our stack
+    /exec { //pushs exec } addoper
+
+    %for run, open file and push
+    /run { (r) file cvx //pushs exec } addoper
+
+    %for currentfile, we need to scan through the stack
+    % and fallback to calling the real currentfile
+    /currentfile {
+        {
+            //dbdict /stack get //dbdict /ptr get -1 0 {
+                2 copy get
+                type /filetype eq { % top-most executable file
+                    get stop
+                } if
+                pop
+            } for
+            pop
+        } stopped not {
+            (currentfile: fallback)=
+            currentfile
+        } if
+    } addoper
+
+    %push the appropriate proc
+    /if { exch { //pushs exec }{ pop } ifelse } addoper
+    /ifelse { 3 2 roll not { exch } if pop //pushs exec } addoper
+
+    %to do loops,
+    % push continuation (the same looping operator)
+    % construct and push an argument array for the continuation
+    % push the first iteration
+    /loop {
+        /loop cvx //pushs exec
+        dup 1 array astore cvx //pushs exec
+        //pushs exec
+    } addoper
+    /repeat {
+        exch dup 0 eq { pop pop }{
+            /repeat cvx //pushs exec
+            1 sub 2 copy exch 2 array astore cvx //pushs exec
+            pop //pushs exec
+        } ifelse
+    } addoper
+    /for {
+        4 1 roll
+        3 copy exch 0 gt { le }{ ge } ifelse {
+            /for cvx //pushs exec % {} st inc fin
+            2 index 2 index add % {} st inc fin st+inc
+            3 1 roll 4 index 4 array astore cvx //pushs exec % {} st
+            exch //pushs exec % st
+        }{
+            pop pop pop pop
+        } ifelse
+    } addoper
+
+    % for forall,
+    % for strings and arrays, it's pretty straightforward:
+    %   push continuation op,
+    %   construct and push continuation argument array
+    %   put element 0 the (real) stack and push the proc
+    % for dictionaries, first we spill the contents into an array
+    % then pass control (by continuation) to dict-forall,
+    % which handles cracking the array, calling proc, and continuing to itself
+    /dict-forall { % [[k v]*] proc
+        exch dup length 0 eq { pop pop }{ % proc array
+            /dict-forall cvx //pushs exec % proc array
+            dup 0 get 3 1 roll % array[0] proc array
+            1 1 index length 1 sub getinterval % array[0] proc array[1..n-1]
+            1 index 2 array astore cvx //pushs exec % array[0] proc
+            //pushs exec % [k v]
+            aload pop % key val
+        } ifelse
+    }
+    /forall {
+        (--forall--)=
+        exch dup type /dicttype eq { % dict proc
+            (--dict--)= pstack
+            /dict-forall cvx //pushs exec % dict proc
+            [ exch [ exch % proc [ [ dict
+            {] [} forall pop ] % proc [[k v][k v]...[k v]]
+            exch 2 array astore cvx //pushs exec
+        }{
+            (--str/arr--)=
+            dup length 0 eq { pop pop }{
+                /forall cvx //pushs exec % comp proc
+                dup 0 get 3 1 roll % comp[0] proc comp
+                1 1 index length 1 sub getinterval % comp[0] proc comp[1..n-1]
+                1 index 2 array astore cvx //pushs exec % comp[0] proc
+                //pushs exec % comp[0]
+            } ifelse
+        } ifelse
+    } addoper
+
+    %for exit, scan through the stack for a looping operator
+    /exit {
+        %dumpstack
+        {
+            //dbdict /stack get //dbdict /ptr get -1 0 { % stack index
+                2 copy get % stack index object
+                //loopingops exch known { % found top-most looping op  % stack index
+                    //dbdict /ptr 3 2 roll 1 sub put % reset stack ptr to just below index % stack
+                    stop
+                } if % not stopped: pop index
+                pop % stack
+            } for
+        } stopped not { /exit cvx /unregistered signalerror } if % stack
+        pop %
+    } addoper
+>> def
+
+% core of the debugloop when not stepping
+/debugheart {
+    //operators 1 index known {
+        //operators exch get exec
+    }{
+        load
+        dup type /arraytype eq {
+            dup length 0 eq { pop } //pushs ifelse
+        }{
+            exec
+        } ifelse
+    } ifelse
+} def
+
+% single-char commands for step menu
+/stepcommands <<
+    (n) 0 get { %next
+        /steponnext load //pushs exec
+        stepoff
+        //debugheart exec }
+    /default 1 index
+    (c) 0 get { stepoff //debugheart exec } %continue
+    (b) 0 get { pop skip } %bypass
+    (s) 0 get //debugheart % :)
+    (q) 0 get { pop exit } %quit
+>> def
+
+% core of the debugloop when stepping
+/stepheart {
+    (object )print dup ==only
+    ( defined as ) print
+    dup { load } stopped { pop (!UNDEFINED!)= }{ == } ifelse
+    (step: (continue|next|bypass|step|quit)?) print flush
+    (%lineedit)(r){file}stopped{ %EOF
+        pop ()= exit
+    }{
+        read { %something typed
+            //stepcommands exch
+            2 copy known not { pop /default } if
+            get //stepcommands /default 2 index put
+            exec
+        }{ %blank line
+            //stepcommands /default get exec
+        }ifelse
+    }ifelse
+} def
+
+%print error message
+/errmsg {
+    (Error /) print
+    $error /errorname get dup length string cvs print
+    ( occurred attempting to execute ) print
+} def
+
+%db-error> prompt
+/handerr {
+    $error /errorname get /invalidexit eq {
+        exit
+    }{
+        (db:)print
+        //errmsg exec
+        //dbdict /nextobject get ==
+        (Stack:\n)print pstack
+        {
+            (db-error>) print flush
+            (%lineedit)(r) file cvx exec
+        } stopped {
+            $error /errorname get dup /invalidexit ne
+            exch /undefinedfilename ne and {
+                //errmsg exec (user command\n) print
+            } if
+        } if
+    } ifelse
+} def
+
+%get next object
+% if tracing, print a trace
+% if executable, but not an array, debug it
+/debugloop {
+    //getnextobject exec
+    {
+        //dbdict /nextobject 3 -1 roll put
+        {
+            //dbdict /nextobject get
+            //dbdict /trace get {
+                //dbdict /cstack get exec % print stack comment
+                dup ==only ( )print       % print current object
+            } if
+
+            dup xcheck {
+                dup type /arraytype ne {
+                    //dbdict /step get
+                        //stepheart
+                        //debugheart
+                    ifelse
+                } if
+            } if % else leave on stack
+
+            //dbdict /nextobject null put
+        } stopped //handerr if
+    }{ % no objects
+        //pops exec
+        //dbdict /nextobject null put
+        //dbdict /ptr get 0 lt { exit } if %% <------ 'exit'
+    } ifelse
+} def
+
+% print a 1-line stack dump
+/cstack { ( %|- )print
+    count dup 1 add copy
+    exch pop 1 sub  % ignore top-of-stack which is the current object
+    -1 1{ -1 roll ==only ( )print }for
+    pop / = } def
+
+% clear the pending object
+/skip {
+    //dbdict /nextobject null put
+} enddefbegin
+
+/traceon {
+    //dbdict /trace true put
+} enddefbegin
+
+/traceoff {
+    //dbdict /trace false put
+} enddefbegin
+
+/steponnext {
+    //dbdict /delaystep true put
+} enddefbegin
+
+/stepon {
+    //dbdict /step true put
+} enddefbegin
+
+/stepoff {
+    //dbdict /step false put
+} enddefbegin
+
+% resume exit-ed session
+/resume {
+    //dbdict /ptr get 0 lt {
+        (db: nothing to resume\n) print
+    }{
+        (db: resuming) print
+        //dbdict /trace get { ( trace) print } if
+        (\n) print
+        //debugloop loop
+    } ifelse
+} enddefbegin
+
+% invoke the debugger on an executable file, string, or proc
+/debug { % source  debug  -
+    //dbdict 1 index type known not
+    1 index xcheck not or
+    { /debug cvx /typecheck signalerror } if
+    //pushs exec
+    //debugloop loop
+} enddefbegin
+
+/dumpstack {
+    //dbdict /stack get
+    0 1 //dbdict /ptr get { 2 copy get == pop } for
+    pop
+} enddefbegin
+
+end %discard internal names
+
+currentfile flushfile
+
+traceon stepon {
+    /a { 27 } def
+    /b { 32 mul } def
+    a b b b
+} debug
+
+traceon stepon {
+    << /k /v /k1 /v1 /k2 /v2 >> {
+        exch ==only ( )print ==
+    } forall
+} debug
+
+traceon stepon {
+    [0 1 2 3 4]{
+        =
+    } forall
+} debug
+
+traceon stepon
+{
+    0 1 40 {
+        dup
+    } for
+} debug
+
+%traceon
+%stepon
+%(buggy.ps)(r)file cvx debug %testing currentfile
+
+traceon
+( 1 2 3 add add
+  6 eq { 8 9 add = } { 9 10 add = } ifelse
+  ) cvx debug
+/ =
+
+%stepon
+{ 1 2 3 add add
+  6 eq { 7 } if
+
+ 9 {
+     5
+     count 4 gt {
+         exit
+     } if
+ } repeat
+
+  { 55 exit } loop
+  %undefin
+
+    (continuation) =
+
+    0 1 10 {
+        dup 5 eq {exit} if
+    } for
+
+} debug
+
