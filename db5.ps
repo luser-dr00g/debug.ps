@@ -4,13 +4,17 @@
 comment
 
 Re-write 5 of postscript source-level debugger.
+Previous versions: (https://groups.google.com/d/topic/comp.lang.postscript/PDn8CxfL1qc/discussion)
+(http://code.google.com/p/xpost/downloads/detail?name=db4.ps) requires also:
+(http://code.google.com/p/xpost/downloads/detail?name=ds.ps).
+
 Accepts executable file, string, or procedure as argument.
 'traceon' presents a concise 1-line summary of the current
 object and the stack picture
 
 This file defines the following names 
 
-          comment ... end-comment    comment block notation
+          comment ... end-comment    comment block notation for extended comments
     proc|file|string  debug  -       invoke the debugger
                    -  resume -       resume a session after 'db-error exit' or 'step: q'
                    -  traceon  -     enable tracing
@@ -21,10 +25,13 @@ This file defines the following names
                    -  dumpstack  -   print the contents of the debugging stack
                    -  skip  -        skip the current object
 
-These names may be used to select option before invoking debug,
+These names may be used to select options before invoking debug,
 or to change options at the db-error prompt, which is a "for-real-reals" ps prompt
 with errors suppressed.  After executing your command line, db-error will try to
 re-execute the failed operation, unless you 'skip'.
+
+Note than an extended comment, unlike a %normal comment
+must follow legal postscript syntax so all braces must match, eg. <>, {}.
 
 The step: prompt accepts single-letter commands:
 
@@ -242,7 +249,10 @@ end-comment
                 } if % not stopped: pop index
                 pop % stack
             } for
-        } stopped not { /exit cvx /unregistered signalerror } if % stack
+        } stopped not { % no looping op found: fallback (to error)
+            %/exit cvx /unregistered signalerror
+            pop exit
+        } if % stack
         pop %
     } addoper
 >> def
@@ -286,7 +296,7 @@ end-comment
     }{
         read { %something typed
             //stepcommands exch
-            2 copy known not { pop /default } if
+            2 copy known not { pop /default } if  % FIXME: print "?" and loop
             get //stepcommands /default 2 index put
             exec
         }{ %blank line
@@ -314,6 +324,7 @@ end-comment
     } stopped {
         $error /errorname get dup /invalidexit eq
         exch /undefinedfilename eq or {
+            $error /newerror false put % de-activate the error
             exit
         }{
             //errmsg exec (user command\n) print
@@ -324,6 +335,7 @@ end-comment
 %get next object
 % if tracing, print a trace
 % if executable, but not an array, debug it
+% else leave on stack
 /debugloop {
     //getnextobject exec
     {
@@ -354,6 +366,8 @@ end-comment
 } def
 
 % print a 1-line stack dump
+%cf. https://groups.google.com/d/topic/comp.lang.postscript/Ptkxi3tAxkk/discussion
+% & https://groups.google.com/d/topic/comp.lang.postscript/8NvOEccl_eg/discussion
 /cstack { ( %|- )print
     count dup 1 add copy
     exch pop 1 sub  % ignore top-of-stack which is the current object
@@ -385,7 +399,7 @@ end-comment
     //dbdict /step false put
 } enddefbegin
 
-% resume exit-ed session
+% resume exit-ed or step:q-uit session
 /resume {
     //dbdict /ptr get 0 lt {
         (db: nothing to resume\n) print
@@ -414,13 +428,20 @@ end-comment
 
 end %discard internal names
 
+currentfile flushfile
+
+traceon {
+    blah
+        exit
+        3 6 9 mul mul 
+        42
+} debug
+
 traceon stepon {
     /a { 27 } def
     /b { 32 mul } def
     a b b b
 } debug
-
-currentfile flushfile
 
 traceon stepon {
     << /k /v /k1 /v1 /k2 /v2 >> {
