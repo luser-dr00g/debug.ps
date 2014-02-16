@@ -57,7 +57,7 @@ end-comment
 >> begin /dbdict currentdict def
 
 % push and pop the dbdict<stack>
-/pushs { % proc|file|string|name  pushs
+/pushs { % proc|file|string|name  pushs  -
     //dbdict /ptr 2 copy get 1 add put
     //dbdict /stack get //dbdict /ptr get 3 -1 roll put  % dbdict<stack>[++dbdict<ptr>] = _
 } def
@@ -113,7 +113,7 @@ end-comment
         pop
         //dbdict /ptr get 0 ge {
             //dbdict /stack get //dbdict /ptr get get
-            //dbdict 1 index type get exec
+            //dbdict 1 index type get exec  % call source handler by typename
         }{
             false
         } ifelse
@@ -214,15 +214,12 @@ end-comment
         } ifelse
     }
     /forall {
-        (--forall--)=
         exch dup type /dicttype eq { % dict proc
-            (--dict--)= pstack
             /dict-forall cvx //pushs exec % dict proc
             [ exch [ exch % proc [ [ dict
             {] [} forall pop ] % proc [[k v][k v]...[k v]]
             exch 2 array astore cvx //pushs exec
         }{
-            (--str/arr--)=
             dup length 0 eq { pop pop }{
                 /forall cvx //pushs exec % comp proc
                 dup 0 get 3 1 roll % comp[0] proc comp
@@ -279,7 +276,8 @@ end-comment
 
 % core of the debugloop when stepping
 /stepheart {
-    (object )print dup ==only
+    dup type 20 string cvs print
+    ( object )print dup ==only
     ( defined as ) print
     dup { load } stopped { pop (!UNDEFINED!)= }{ == } ifelse
     (step: (continue|next|bypass|step|quit)?) print flush
@@ -306,23 +304,21 @@ end-comment
 
 %db-error> prompt
 /handerr {
-    $error /errorname get /invalidexit eq {
-        exit
-    }{
-        (db:)print
-        //errmsg exec
-        //dbdict /nextobject get ==
-        (Stack:\n)print pstack
-        {
-            (db-error>) print flush
-            (%lineedit)(r) file cvx exec
-        } stopped {
-            $error /errorname get dup /invalidexit ne
-            exch /undefinedfilename ne and {
-                //errmsg exec (user command\n) print
-            } if
-        } if
-    } ifelse
+    (db:)print //errmsg exec
+    //dbdict /nextobject get ==
+    (Stack:\n)print pstack
+    (debug stack:\n)print dumpstack
+    {
+        (db-error>) print flush
+        (%lineedit)(r) file cvx exec
+    } stopped {
+        $error /errorname get dup /invalidexit eq
+        exch /undefinedfilename eq or {
+            exit
+        }{
+            //errmsg exec (user command\n) print
+        } ifelse
+    } if
 } def
 
 %get next object
@@ -418,13 +414,13 @@ end-comment
 
 end %discard internal names
 
-currentfile flushfile
-
 traceon stepon {
     /a { 27 } def
     /b { 32 mul } def
     a b b b
 } debug
+
+currentfile flushfile
 
 traceon stepon {
     << /k /v /k1 /v1 /k2 /v2 >> {
