@@ -33,7 +33,7 @@ re-execute the failed operation, unless you 'skip'.
 Note than an extended comment, unlike a %normal comment
 must follow legal postscript syntax so all braces must match, eg. <>, {}.
 
-The step: prompt accepts single-letter commands:
+The step: prompt accepts single-letter commands (followed by Return):
 
           c continue   disable single-stepping
           n next       execute the next object (or loop) atomically
@@ -53,15 +53,15 @@ end-comment
 % prepare internal dict known as //dbdict
 % this dict is //immediately-loaded into the procedures
 % so it does not need to be on the dict stack
-<<
-/nextobject null
-/stack 500 array   % internal stack array
-/ptr -1            % stack cursor
-/trace false       % are we producing a trace?
-/step false        % are we pausing at each command?
-/delaystep false
-/enddefbegin { currentdict 3 1 roll end def begin } % define an external function
->> begin /dbdict currentdict def
+/dbdict <<
+    /nextobject null
+    /stack 500 array   % internal stack array
+    /ptr -1            % stack cursor
+    /trace false       % are we producing a trace?
+    /step false        % are we pausing at each command?
+    /delaystep false
+    /enddefbegin { currentdict 3 1 roll end def begin } % define an external function
+>> dup begin def
 
 % push and pop the dbdict<stack>
 /pushs { % proc|file|string|name  pushs  -
