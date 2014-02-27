@@ -277,12 +277,37 @@ end-comment
         /steponnext load //pushs exec
         stepoff
         //debugheart exec }
-    /default 1 index
+    /ditto 1 index
+    /ditto2 1 index
     (c) 0 get { stepoff //debugheart exec } %continue
     (b) 0 get { pop skip } %bypass
     (s) 0 get //debugheart % :)
     (q) 0 get { pop exit } %quit
+    /default {
+        //dbdict /stepcommands get dup /ditto2 get /ditto exch put %reset ditto2 as ditto
+        (?) print flush
+        //dbdict /stepinput get exec
+    } % unrecognized command: print "?" and loop
 >> def
+
+/stepinput {
+    (step: (continue|next|bypass|step|quit)?) print flush
+    (%lineedit)(r){file}stopped{ %EOF
+        %pstack()= % <object> -file- false 0 -string-
+        pop pop pop pop pop ()= exit
+    }{
+        read { %something typed
+            //stepcommands dup /ditto get /ditto2 exch
+            put %save ditto as ditto2
+            //stepcommands exch
+            2 copy known not { pop /default } if
+            get //stepcommands /ditto 2 index put %set ditto as last command
+            exec
+        }{ %blank line
+            //stepcommands /ditto get exec
+        }ifelse
+    }ifelse
+} def
 
 % core of the debugloop when stepping
 /stepheart {
@@ -290,19 +315,7 @@ end-comment
     ( object )print dup ==only
     ( defined as ) print
     dup { load } stopped { pop (!UNDEFINED!)= }{ == } ifelse
-    (step: (continue|next|bypass|step|quit)?) print flush
-    (%lineedit)(r){file}stopped{ %EOF
-        pop ()= exit
-    }{
-        read { %something typed
-            //stepcommands exch
-            2 copy known not { pop /default } if  % FIXME: print "?" and loop
-            get //stepcommands /default 2 index put
-            exec
-        }{ %blank line
-            //stepcommands /default get exec
-        }ifelse
-    }ifelse
+    //stepinput exec
 } def
 
 %print error message
@@ -428,6 +441,16 @@ end-comment
 
 end %discard internal names
 
+traceon stepon {
+    1 2 add
+} debug
+
+traceon stepon {
+    /a { 27 } def
+    /b { 32 mul } def
+    a b b b
+} debug
+
 currentfile flushfile
 
 traceon {
@@ -435,12 +458,6 @@ traceon {
         exit
         3 6 9 mul mul 
         42
-} debug
-
-traceon stepon {
-    /a { 27 } def
-    /b { 32 mul } def
-    a b b b
 } debug
 
 traceon stepon {
