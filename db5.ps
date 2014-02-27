@@ -441,6 +441,8 @@ end-comment
 
 end %discard internal names
 
+currentfile flushfile
+
 traceon stepon {
     1 2 add
 } debug
@@ -450,8 +452,6 @@ traceon stepon {
     /b { 32 mul } def
     a b b b
 } debug
-
-currentfile flushfile
 
 traceon {
     blah
