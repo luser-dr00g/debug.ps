@@ -263,11 +263,13 @@ end-comment
         //operators exch get exec
     }{
         load
-        dup type /arraytype eq {
-            dup length 0 eq { pop } //pushs ifelse
-        }{
-            exec
-        } ifelse
+        dup xcheck {
+            dup type /arraytype eq {
+                dup length 0 eq { pop } //pushs ifelse
+            }{
+                exec
+            } ifelse
+        } if
     } ifelse
 } def
 
@@ -442,6 +444,12 @@ end-comment
 end %discard internal names
 
 currentfile flushfile
+
+traceon stepon {
+    /x [] def
+    /y /x load def
+    /y x def
+} debug
 
 traceon stepon {
     1 2 add
