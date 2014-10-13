@@ -48,6 +48,9 @@ To invoke from an external program:
     (db5.ps)run traceon currentfile cvx debug
     blah blah blah undefined undefined
 
+Insert 'stepon' in your code to trigger a "breakpoint" and begin
+single-stepping at that point.
+
 Bugs.
 When single-stepping with tracing on, there is some garbage trace of twiddling
 the /step variable. 
@@ -69,20 +72,21 @@ end-comment
 
 % push and pop the dbdict<stack>
 /pushs { % proc|file|string|name  pushs  -
-    //dbdict /ptr 2 copy get 1 add put
-    //dbdict /stack get //dbdict /ptr get 3 -1 roll put  % dbdict<stack>[++dbdict<ptr>] = _
+    //dbdict /ptr 2 copy get 1 add put                   % ++dbdict<ptr>
+    //dbdict /stack get //dbdict /ptr get 3 -1 roll put  % dbdict<stack>[dbdict<ptr>] = _
 } def
 /pops { % -  pops  -
     //dbdict /ptr get 0 ge {
-        //dbdict /stack get //dbdict /ptr get get  % dbdict<stack>[dbdict<ptr>]
-        dup type /filetype eq {closefile}{pop} ifelse
-        //dbdict /ptr 2 copy get 1 sub put  % --dbdict<ptr>
+        //dbdict /stack get //dbdict /ptr get get        % dbdict<stack>[dbdict<ptr>]
+        dup type /filetype eq {closefile}{pop} ifelse    % close if file
+        //dbdict /ptr 2 copy get 1 sub put               % --dbdict<ptr>
     } if
 } def
 
 % executable source type handlers
 % these all attempt to present the same interface as `file token`
-% nametype is not really a source, but is allowed on the stack to handle loop continuations
+% nametype is not really a source, but is allowed on the stack to
+% handle loop continuations which push the loop name
 /nametype {
     //pops exec  % remove name from source stack
     true
@@ -138,7 +142,7 @@ end-comment
 % addoper defines an override for the actual operator object, for bound procs
 /addoper { 1 index dup load type /operatortype eq { 1 index }{pop} ifelse } def
 
-% list of operators that exit searches for
+% list of operators that our override of `exit` searches for
 /loopingops <<
     /loop 1
     /repeat 1
@@ -297,8 +301,10 @@ end-comment
 >> def
 
 /stepinput {
-    (step: (continue|next|bypass|step|quit)?) print flush
-    (%lineedit)(r){file}stopped{ %EOF
+    (step: (continue|next|bypass|step|quit)?) print flush  % present prompt
+    (%lineedit)(r){
+        file %     read line
+    }stopped{ %EOF
         %pstack()= % <object> -file- false 0 -string-
         pop pop pop pop pop ()= exit
     }{
@@ -387,6 +393,7 @@ end-comment
 % print a 1-line stack dump
 %cf. https://groups.google.com/d/topic/comp.lang.postscript/Ptkxi3tAxkk/discussion
 % & https://groups.google.com/d/topic/comp.lang.postscript/8NvOEccl_eg/discussion
+% & http://tex.stackexchange.com/questions/160246/how-to-automatically-generate-a-stack-diagram-for-a-postscript-expression/160503#160503
 /cstack { ( %|- )print
     count dup 1 add copy
     exch pop 1 sub  % ignore top-of-stack which is the current object
