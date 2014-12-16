@@ -267,18 +267,24 @@ end-comment
 
 % core of the debugloop when not stepping
 /debugheart {
-    //operators 1 index known {
-        //operators exch get exec
-    }{
-        load
-        dup xcheck {
-            dup type /arraytype eq {
-                dup length 0 eq { pop } //pushs ifelse
+    dup xcheck {
+        //operators 1 index known {
+            //operators exch get exec
+        }{
+            dup /nametype eq {
+                load
+                dup xcheck {
+                    dup type /arraytype eq {
+                        dup length 0 eq { pop } //pushs ifelse
+                    }{
+                        exec
+                    } ifelse
+                } if
             }{
                 exec
             } ifelse
-        } if
-    } ifelse
+        } ifelse
+    } if
 } def
 
 % single-char commands for step menu
@@ -325,8 +331,8 @@ end-comment
 /stepheart {
     dup type 20 string cvs print
     ( object )print dup ==only
-    ( defined as ) print
-    dup { load } stopped { pop (!UNDEFINED!)= }{ == } ifelse
+    %( defined as ) print
+    %dup { load } stopped { pop (!UNDEFINED!)= }{ == } ifelse
     //stepinput exec
 } def
 
@@ -398,7 +404,7 @@ end-comment
     count dup 1 add copy
     exch pop 1 sub  % ignore top-of-stack which is the current object
     -1 1{ -1 roll ==only ( )print }for
-    pop / = } def
+    pop ()= } def
 
 % clear the pending object
 /skip {
@@ -454,7 +460,7 @@ end-comment
 
 end %discard internal names
 
-currentfile flushfile
+%currentfile flushfile
 
 traceon stepon {
     /x [] def
@@ -506,7 +512,7 @@ traceon
 ( 1 2 3 add add
   6 eq { 8 9 add = } { 9 10 add = } ifelse
   ) cvx debug
-/ =
+()=
 
 %stepon
 { 1 2 3 add add
