@@ -16,6 +16,10 @@ object and the stack picture
 This file defines the following names 
 
           comment ... end-comment    comment block notation for extended comments
+
+        %%Hacker Note that an extended comment (ie. ^^-all of this surrounding text-VV), unlike a %normal comment
+        %%must follow legal postscript syntax so all braces must match, eg. <hex-only-please>, {}.
+
     proc|file|string  debug  -       invoke the debugger
                    -  resume -       resume a session after 'db-error exit' or 'step: q'
                    -  traceon  -     enable tracing
@@ -29,10 +33,12 @@ This file defines the following names
 These names may be used to select options before invoking debug,
 or to change options at the db-error prompt, which is a "for-real-reals" ps prompt
 with errors suppressed.  After executing your command line, db-error will try to
-re-execute the failed operation, unless you 'skip'.
+re-execute the failed operation, unless you 'skip'. Note that if you 'skip' from
+the db-error prompt, you probably want to 'pop', too, because the object is on 
+the stack as well as in the next-object cache. In fact whenever trying to "fix"
+an error on the fly, consider carefully how the stacks are left and whether you
+need to 'pop' the last object.
 
-Note than an extended comment, unlike a %normal comment
-must follow legal postscript syntax so all braces must match, eg. <>, {}.
 
 The step: prompt accepts single-letter commands (followed by Return):
 
@@ -41,6 +47,7 @@ The step: prompt accepts single-letter commands (followed by Return):
           b bypass     skip next object
           s step       step into next object (or loop)
           q quit       exit the debugger (may be 'resume'ed)
+            blank-line repeat previous command (initial "previous command" is 'n'ext)
 
 To invoke from an external program:
 
@@ -50,12 +57,19 @@ To invoke from an external program:
     blah blah blah undefined undefined
 
 Insert 'stepon' in your code to trigger a "breakpoint" and begin
-single-stepping at that point.
+single-stepping at that point. A more elaborate way of doing a breakpoint 
+would be to insert an undefined name which will trigger the db-error 
+prompt, from which you may select options (like 'stepon') or execute
+some postscript code at that point.
 
 Bugs.
 When single-stepping with tracing on, there is some garbage trace of twiddling
 the /step variable. 
 
+Debugging the debugger.
+If you ever really need to debug the debugger (or are very very curious),
+it is possible to extract the dbdict from one of the external procedures.
+eg.  /stepon load 0 get { exch =only ( )=only == } forall
 end-comment
 
 % prepare internal dict known as //dbdict
@@ -63,8 +77,9 @@ end-comment
 % so it does not need to be on the dict stack
 /dbdict <<
     /nextobject null
-    /stack 500 array   % internal stack array
-    /ptr -1            % stack cursor
+    /stack 500 array   % internal stack array   this is a typical level-1 limit
+                       %                        it can be made larger for larger programs
+    /ptr -1            % stack cursor           -1::empty
     /trace false       % are we producing a trace?
     /step false        % are we pausing at each command?
     /delaystep false
@@ -401,6 +416,8 @@ end-comment
 %cf. https://groups.google.com/d/topic/comp.lang.postscript/Ptkxi3tAxkk/discussion
 % & https://groups.google.com/d/topic/comp.lang.postscript/8NvOEccl_eg/discussion
 % & http://tex.stackexchange.com/questions/160246/how-to-automatically-generate-a-stack-diagram-for-a-postscript-expression/160503#160503
+% also see "The `count -1 1{-1 roll =}for` Idiom"
+%      https://groups.google.com/d/topic/comp.lang.postscript/Ptkxi3tAxkk/discussion
 /cstack { ( %|- )print
     count dup 1 add copy
     exch pop 1 sub  % ignore top-of-stack which is the current object
