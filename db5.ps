@@ -183,7 +183,7 @@ end-comment
             //dbdict /stack get //dbdict /ptr get -1 0 {
                 2 copy get
                 type /filetype eq { % top-most executable file
-                    get stop
+                    get cvlit stop
                 } if
                 pop
             } for
