@@ -1,6 +1,6 @@
 %!
 %db5.ps
-/signalerror where{pop}{/signalerror//.error def}ifelse
+/signalerror where{pop}{/signalerror/.error load def}ifelse
 /comment{{currentfile token pop/end-comment eq{exit}if}loop}def
 comment
 
