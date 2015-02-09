@@ -324,7 +324,7 @@ end-comment
 >> def
 
 /stepinput {
-    (step: (continue|next|bypass|step|prompt|quit)?) print flush  % present prompt
+    ( step: (continue|next|bypass|step|prompt|quit)?) print flush  % present prompt
     (%lineedit)(r){
         file %     read line
     }stopped{ %EOF
