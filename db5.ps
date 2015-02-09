@@ -305,16 +305,17 @@ end-comment
 
 % single-char commands for step menu
 /stepcommands <<
-    (n) 0 get { %next
+    (n) 0 get {                                      %next. execute next token atomically
         /steponnext load //pushs exec
         stepoff
         //debugheart exec }
     /ditto 1 index
     /ditto2 1 index
-    (c) 0 get { stepoff //debugheart exec } %continue
-    (b) 0 get { pop skip } %bypass
-    (s) 0 get //debugheart % :)
-    (q) 0 get { pop exit } %quit
+    (c) 0 get { stepoff //debugheart exec }          %continue. stop single-stepping
+    (b) 0 get { pop skip }                           %bypass. pop and skip the current object
+    (s) 0 get //debugheart % :)                      %step. step into loop or procedure call
+    (p) 0 get { //pushs exec executive pop pop }     %prompt. launch an executive session right here
+    (q) 0 get { pop exit }                           %quit. exit the debugger (can `resume`)
     /default {
         //dbdict /stepcommands get dup /ditto2 get /ditto exch put %reset ditto2 as ditto
         (?) print flush
@@ -323,7 +324,7 @@ end-comment
 >> def
 
 /stepinput {
-    (step: (continue|next|bypass|step|quit)?) print flush  % present prompt
+    (step: (continue|next|bypass|step|prompt|quit)?) print flush  % present prompt
     (%lineedit)(r){
         file %     read line
     }stopped{ %EOF
@@ -478,7 +479,16 @@ end-comment
 
 end %discard internal names
 
+
+% testing section.
+% comment-out `currentfile flushfile` to run tests
+
 currentfile flushfile
+
+
+traceon stepon {
+    1 2 add 3 4 add 5 6 add 7 8 add 9 0 add
+} debug
 
 traceon stepon {
     /x [] def
