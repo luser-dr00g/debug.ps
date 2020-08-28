@@ -10,8 +10,9 @@ Previous versions: (https://groups.google.com/d/topic/comp.lang.postscript/PDn8C
 (http://code.google.com/p/xpost/downloads/detail?name=ds.ps).
 
 Accepts executable file, string, or procedure as argument.
-'traceon' presents a concise 1-line summary of the current
-object and the stack picture
+'traceon' presents a concise 1-line summary of the current object and the stack picture.
+Catches errors and issues an error prompt, maintaining the state and context of the 
+program at the point of error.
 
 This file defines the following names 
 
@@ -46,6 +47,7 @@ The step: prompt accepts single-letter commands (followed by Return):
           n next       execute the next object (or loop) atomically
           b bypass     skip next object
           s step       step into next object (or loop)
+	  p prompt     run executive right here, resume when it exits
           q quit       exit the debugger (may be 'resume'ed)
             blank-line repeat previous command (initial "previous command" is 'n'ext)
 
@@ -235,28 +237,28 @@ end-comment
     % then pass control (by continuation) to dict-forall,
     % which handles cracking the array, calling proc, and continuing to itself
     /dict-forall { % [[k v]*] proc
-        exch dup length 0 eq { pop pop }{ % proc array
-            /dict-forall cvx //pushs exec % proc array
-            dup 0 get 3 1 roll % array[0] proc array
-            1 1 index length 1 sub getinterval % array[0] proc array[1..n-1]
+        exch dup length 0 eq { pop pop }{           % proc array
+            /dict-forall cvx //pushs exec           % proc array
+            dup 0 get 3 1 roll                      % array[0] proc array
+            1 1 index length 1 sub getinterval      % array[0] proc array[1..n-1]
             1 index 2 array astore cvx //pushs exec % array[0] proc
-            //pushs exec % [k v]
-            aload pop % key val
+            //pushs exec                            % [k v]
+            aload pop                               % key val
         } ifelse
     }
     /forall {
-        exch dup type /dicttype eq { % dict proc
+        exch dup type /dicttype eq {      % dict proc
             /dict-forall cvx //pushs exec % dict proc
-            [ exch [ exch % proc [ [ dict
-            {] [} forall pop ] % proc [[k v][k v]...[k v]]
+            [ exch [ exch                 % proc [ [ dict
+            {] [} forall pop ]            % proc [[k v][k v]...[k v]]
             exch 2 array astore cvx //pushs exec
         }{
             dup length 0 eq { pop pop }{
-                /forall cvx //pushs exec % comp proc
-                dup 0 get 3 1 roll % comp[0] proc comp
-                1 1 index length 1 sub getinterval % comp[0] proc comp[1..n-1]
+                /forall cvx //pushs exec                % comp proc
+                dup 0 get 3 1 roll                      % comp[0] proc comp
+                1 1 index length 1 sub getinterval      % comp[0] proc comp[1..n-1]
                 1 index 2 array astore cvx //pushs exec % comp[0] proc
-                //pushs exec % comp[0]
+                //pushs exec                            % comp[0]
             } ifelse
         } ifelse
     } addoper
@@ -266,12 +268,12 @@ end-comment
         %dumpstack
         {
             //dbdict /stack get //dbdict /ptr get -1 0 { % stack index
-                2 copy get % stack index object
-                //loopingops exch known { % found top-most looping op  % stack index
-                    //dbdict /ptr 3 2 roll 1 sub put % reset stack ptr to just below index % stack
+                2 copy get                               % stack index object
+                //loopingops exch known {                % found top-most looping op  % stack index
+                    //dbdict /ptr 3 2 roll 1 sub put     % reset stack ptr to just below index % stack
                     stop
-                } if % not stopped: pop index
-                pop % stack
+                } if %   not stopped: pop index
+                pop  % stack
             } for
         } stopped not { % no looping op found: fallback (to error)
             %/exit cvx /unregistered signalerror
@@ -397,10 +399,7 @@ end-comment
 
             dup xcheck {
                 dup type /arraytype ne {
-                    //dbdict /step get
-                        //stepheart
-                        //debugheart
-                    ifelse
+                    //dbdict /step get //stepheart //debugheart ifelse
                 } if
             } if % else leave on stack
 
