@@ -71,7 +71,7 @@ the /step variable.
 Debugging the debugger.
 If you ever really need to debug the debugger (or are very very curious),
 it is possible to extract the dbdict from one of the external procedures.
-eg.  /stepon load 0 get { exch =only ( )=only == } forall
+eg.  /stepon load 0 get { exch =only ( )=only == } forall  %using gs =only
 end-comment
 
 % prepare internal dict known as //dbdict
@@ -87,6 +87,89 @@ end-comment
     /delaystep false
     /enddefbegin { currentdict 3 1 roll end def begin } % define an external function
 >> dup begin def
+
+% Portable implementation of gs marvelous =only and ==only
+/=buffer 256 string def
+/=nonldict
+    <<
+	/operatortype { pop (-oper-) print }
+	/filetype { pop (-file-) print }
+        /nametype { dup xcheck not {(/)print} if //=buffer cvs print }
+        /stringtype { { print } stopped { pop (-string-) print } if }
+        /integertype { //=buffer cvs print }
+        /realtype { //=buffer cvs print }
+        /arraytype { pop (-array-) print }
+        /packedarraytype 1 index
+        /dicttype { pop (-dict-) print }
+        /booleantype { {(true)}{(false)} ifelse print }
+        /nulltype { pop (null) print }
+        /marktype { pop (-mark-) print }
+        /savetype { pop (-save-) print }
+    >> def
+/=nonl {
+    //=nonldict 1 index type get exec
+} def
+
+/==nonldict
+    <<
+	/operatortype { pop (-oper-) tprint }
+	/filetype { pop (-file-) tprint }
+        /nametype { dup xcheck not {(/)tprint} if //=buffer cvs tprint }
+        /stringtype { dup rcheck { dostring }{ (-string-) tprint } ifelse }
+        /integertype { //=buffer cvs tprint }
+        /realtype { //=buffer cvs tprint }
+        /arraytype { dup rcheck not { pop (-array-) tprint }{
+                     dup xcheck { ({) tprint doarray (}) tprint }{
+                                  ([) tprint doarray (]) tprint
+                   } ifelse } ifelse }
+        /packedarraytype 1 index
+        /dicttype { pop (-dict-) tprint }
+        /booleantype { {(true)}{(false)} ifelse tprint }
+        /nulltype { pop (null) tprint }
+        /marktype { pop (-mark-) tprint }
+        /savetype { pop (-save-) tprint }
+        /tprint {
+            charcount 1 index length add 80 gt {
+                (\n) print
+                /charcount 1 index length def
+            }{
+                /charcount charcount 2 index length add def
+            } ifelse
+            print
+        }
+        /dostring {
+            (\() tprint
+            {
+                dup 32 lt 1 index 126 gt or {
+                    (\\) tprint
+                    1000 add
+                    //=buffer cvs
+                    1 1 index length 1 sub getinterval
+                    tprint
+                }{
+                    ( ) dup 0 4 3 roll put tprint
+                } ifelse
+            } forall
+            (\)) tprint
+        }
+        /doarray {
+            dup length 0 eq {pop}{
+		dup 0 get dup type exec
+		1 1 index length 1 sub getinterval
+		{
+		    ( ) tprint
+		    dup type exec
+		} forall
+            } ifelse
+        }
+    >> def
+/==nonl {
+    //==nonldict begin
+	/charcount 0 def
+	dup type exec
+    end
+} def
+
 
 % push and pop the dbdict<stack>
 /pushs { % proc|file|string|name  pushs  -
@@ -158,7 +241,8 @@ end-comment
 } def
 
 % addoper defines an override for the actual operator object, for bound procs
-/addoper { 1 index dup load type /operatortype eq { 1 index }{pop} ifelse } def
+%/addoper { 1 index load dup type /operatortype eq { 1 index }{pop} ifelse } def
+/addoper {} def
 
 % list of operators that our override of `exit` searches for
 /loopingops <<
@@ -349,7 +433,7 @@ end-comment
 % core of the debugloop when stepping
 /stepheart {
     dup type 20 string cvs print
-    ( object )print dup ==only
+    ( object )print dup //==nonl exec
     %( defined as ) print
     %dup { load } stopped { pop (!UNDEFINED!)= }{ == } ifelse
     //stepinput exec
@@ -365,7 +449,8 @@ end-comment
 %db-error> prompt
 /handerr {
     (db:)print //errmsg exec
-    //dbdict /nextobject get ==
+    $error /command get ==
+    (next: )print //dbdict /nextobject get ==
     (Stack:\n)print pstack
     (debug stack:\n)print dumpstack
     {
@@ -394,7 +479,8 @@ end-comment
             //dbdict /nextobject get
             //dbdict /trace get {
                 //dbdict /cstack get exec % print stack comment
-                dup ==only ( )print       % print current object
+                dup //==nonl exec       % print current object
+		( )print
             } if
 
             dup xcheck {
@@ -421,8 +507,10 @@ end-comment
 /cstack { ( %|- )print
     count dup 1 add copy
     exch pop 1 sub  % ignore top-of-stack which is the current object
-    -1 1{ -1 roll ==only ( )print }for
+    -1 1{ -1 roll //==nonl exec
+	  ( )print }for
     pop ()= } def
+
 
 % clear the pending object
 /skip {
@@ -488,6 +576,7 @@ currentfile flushfile
 traceon stepon {
     1 2 add 3 4 add 5 6 add 7 8 add 9 0 add
 } debug
+clear
 
 traceon stepon {
     /x [] def
